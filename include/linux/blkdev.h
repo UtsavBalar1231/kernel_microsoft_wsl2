@@ -109,6 +109,7 @@ struct blk_integrity {
 	const struct blk_integrity_profile	*profile;
 	unsigned char				flags;
 	unsigned char				tuple_size;
+	unsigned char				pi_offset;
 	unsigned char				interval_exp;
 	unsigned char				tag_size;
 };
@@ -326,7 +327,7 @@ void disk_set_zoned(struct gendisk *disk);
 int blkdev_report_zones(struct block_device *bdev, sector_t sector,
 		unsigned int nr_zones, report_zones_cb cb, void *data);
 int blkdev_zone_mgmt(struct block_device *bdev, enum req_op op,
-		sector_t sectors, sector_t nr_sectors, gfp_t gfp_mask);
+		sector_t sectors, sector_t nr_sectors);
 int blk_revalidate_disk_zones(struct gendisk *disk,
 		void (*update_driver_data)(struct gendisk *disk));
 
@@ -943,6 +944,7 @@ struct blk_plug {
 
 	/* if ios_left is > 1, we can batch tag/rq allocations */
 	struct request *cached_rq;
+	u64 cur_ktime;
 	unsigned short nr_ios;
 
 	unsigned short rq_count;
@@ -973,6 +975,18 @@ static inline void blk_flush_plug(struct blk_plug *plug, bool async)
 		__blk_flush_plug(plug, async);
 }
 
+/*
+ * tsk == current here
+ */
+static inline void blk_plug_invalidate_ts(struct task_struct *tsk)
+{
+	struct blk_plug *plug = tsk->plug;
+
+	if (plug)
+		plug->cur_ktime = 0;
+	current->flags &= ~PF_BLOCK_TS;
+}
+
 int blkdev_issue_flush(struct block_device *bdev);
 long nr_blockdev_pages(void);
 #else /* CONFIG_BLOCK */
@@ -993,6 +1007,10 @@ static inline void blk_finish_plug(struct blk_plug *plug)
 }
 
 static inline void blk_flush_plug(struct blk_plug *plug, bool async)
+{
+}
+
+static inline void blk_plug_invalidate_ts(struct task_struct *tsk)
 {
 }
 
